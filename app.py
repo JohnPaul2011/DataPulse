@@ -1,11 +1,11 @@
 from flask import Flask, jsonify, request, send_file, render_template_string
 import time, os
 from gevent import pywsgi
-import io, random 
+import io, random
 
 app = Flask(__name__)
 
-storage = {}
+storage = {}   # room → messages
 
 def unique_id():
     return hex(time.time_ns())[2:]
@@ -14,86 +14,71 @@ def unique_id():
 def index():
     return "Status --> OK " + str(random.randint(1000,9999))
 
+# Post message to a room
 @app.route('/u/<user>/<room_id>/post/<data>')
 def post_data(user, room_id, data):
-    if user not in storage:
-        storage[user] = {}
-
-    if room_id not in storage[user]:
-        storage[user][room_id] = {}
+    if room_id not in storage:
+        storage[room_id] = {}
 
     uid = unique_id()[:8]
-    storage[user][room_id][uid] = {
+    storage[room_id][uid] = {
+        "user": user,
         "data": data,
         "time": time.strftime('%Y-%m-%d %H:%M:%S')
     }
+    return jsonify({"user":user,"status": "posted", "room": room_id, "id": uid})
 
-    return jsonify({"status": "saved", "user": user, "room": room_id, "id": uid})
- 
+# Get messages in a room
 @app.route('/u/<user>/<room_id>/get')
-def get_data(user, room_id):
-    room_data = storage.get(user, {}).get(room_id, {})
-    filtered = {}
-    for uid, entry in room_data.items():
-        info = {
-            "time": entry.get("time"),
-            "user" : user
-        }
-        if "filename" in entry:
-            info["filename"] = entry["filename"]
-        if "data" in entry:
-            info["data"] = entry["data"]
-        filtered[uid] = info
-    return jsonify(filtered)
-    
-    
-# Upload file - form-enabled for select prompt in browsers
-@app.route('/u/<user>/<room_id>/upload', methods=['GET', 'POST'])
-def upload_file(user, room_id):
+def get_data(user,room_id):
+    room_data = storage.get(room_id, {})
+    return jsonify(room_data)
+
+# Upload file to a room
+@app.route('/u/<user>/<room_id>/upload/', methods=['GET', 'POST'])
+def upload_file(room_id, user):
     if request.method == 'GET':
-        # Simple HTML form to trigger file select prompt in browser
         return render_template_string('''
-            <form method="post" enctype="multipart/form-data">
-              <input type="file" name="file" />
-              <input type="submit" value="Upload" />
-            </form>
+        <form method="post" enctype="multipart/form-data">
+          <input type="file" name="file" />
+          <input type="submit" value="Upload" />
+        </form>
         ''')
 
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
-    # Save file in storage with the original filename and content
-    content = file.read()
-    if user not in storage:
-        storage[user] = {}
-    if room_id not in storage[user]:
-        storage[user][room_id] = {}
+    if room_id not in storage:
+        storage[room_id] = {}
 
     uid = unique_id()[:8]
-    storage[user][room_id][uid] = {
+    storage[room_id][uid] = {
+        "user": user,
         "filename": file.filename,
-        "content": content,
+        "content": file.read(),
         "time": time.strftime('%Y-%m-%d %H:%M:%S')
     }
-    return jsonify({"status": "file uploaded and saved", "user": user, "room": room_id, "id": uid})
+    return jsonify({"status": "file uploaded", "room": room_id, "id": uid})
 
-# Download a specific file by UID
-@app.route('/u/<user>/<room_id>/download/<uid>')
-def download_file(user, room_id, uid):
-    chat_data = storage.get(user, {}).get(room_id, {})
-    file_entry = chat_data.get(uid)
-    if not file_entry:
+# Download file
+@app.route('/u/<room_id>/download/<uid>')
+def download_file(room_id, uid):
+    room = storage.get(room_id, {})
+    entry = room.get(uid)
+    if not entry:
         return jsonify({"error": "File not found"}), 404
 
     return send_file(
-        io.BytesIO(file_entry['content']),
+        io.BytesIO(entry['content']),
         as_attachment=True,
-        download_name=file_entry.get('filename', 'file'),
+        download_name=entry.get('filename', 'file'),
         mimetype='application/octet-stream'
     )
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     server = pywsgi.WSGIServer(('0.0.0.0', port), app)
