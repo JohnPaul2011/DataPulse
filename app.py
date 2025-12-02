@@ -28,7 +28,7 @@ def post_data(user, room_id, data):
         "time": time.strftime('%Y-%m-%d %H:%M:%S')
     }
 
-    return jsonify({"status": "saved", "user": user, "room": room_id, "id": uid}
+    return jsonify({"status": "saved", "user": user, "room": room_id, "id": uid})
  
 @app.route('/u/<user>/<room_id>/get')
 def get_data(user, room_id):
