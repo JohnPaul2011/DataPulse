@@ -94,17 +94,6 @@ def download_file(user, room_id, uid):
         download_name=file_entry.get('filename', 'file'),
         mimetype='application/octet-stream'
     )
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    server = pywsgi.WSGIServer(('0.0.0.0', port), app)
-    server.serve_forever()
-        io.BytesIO(file_entry['content']),
-        as_attachment=True,
-        download_name=file_entry.get('filename', 'file'),
-        mimetype='application/octet-stream'
-    )
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     server = pywsgi.WSGIServer(('0.0.0.0', port), app)
