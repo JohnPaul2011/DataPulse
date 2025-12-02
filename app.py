@@ -14,6 +14,15 @@ def unique_id():
 def index():
     return "Status --> OK " + str(random.randint(1000,9999))
 
+# Clear room messages
+@app.route('/u/<user>/<room_id>/clear')
+def clear_room(user, room_id):
+    if room_id in storage:
+        storage[room_id] = {}
+        return jsonify({"status":"cleared","room":room_id})
+    return jsonify({"status":"no room"})
+    
+
 # Post message to a room
 @app.route('/u/<user>/<room_id>/post/<data>')
 def post_data(user, room_id, data):
