@@ -41,8 +41,21 @@ def post_data(user, room_id, data):
 @app.route('/u/<user>/<room_id>/get')
 def get_data(user,room_id):
     room_data = storage.get(room_id, {})
-    return jsonify(room_data)
+    out = {}
 
+    for k,v in room_data.items():
+        d = v.copy()
+
+        # if file entry replace bytes with only filename
+        if "content" in d:
+            d.pop("content")
+            # already has filename key so keep it
+
+        out[k] = d
+
+    return jsonify(out)
+    
+    
 # Upload file to a room
 @app.route('/u/<user>/<room_id>/upload/', methods=['GET', 'POST'])
 def upload_file(room_id, user):
@@ -61,6 +74,13 @@ def upload_file(room_id, user):
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
+    # limit check 250MB
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    if size > 250 * 1024 * 1024:
+        return jsonify({"error": "File too large"}), 400
+
     if room_id not in storage:
         storage[room_id] = {}
 
@@ -72,7 +92,7 @@ def upload_file(room_id, user):
         "time": time.strftime('%Y-%m-%d %H:%M:%S')
     }
     return jsonify({"status": "file uploaded", "room": room_id, "id": uid})
-
+    
 # Download file
 @app.route('/u/<room_id>/download/<uid>')
 def download_file(room_id, uid):
