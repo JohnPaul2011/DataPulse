@@ -5,7 +5,10 @@ import io, random
 
 app = Flask(__name__)
 
-storage = {}   # room → messages
+storage = {}
+
+BASE_DIR = "rooms"
+os.makedirs(BASE_DIR, exist_ok=True)
 
 def unique_id():
     return hex(time.time_ns())[2:]
@@ -14,16 +17,18 @@ def unique_id():
 def index():
     return "Status --> OK " + str(random.randint(1000,9999))
 
-# Clear room messages
 @app.route('/u/<user>/<room_id>/clear')
 def clear_room(user, room_id):
     if room_id in storage:
+        folder = os.path.join(BASE_DIR, room_id)
+        if os.path.isdir(folder):
+            for f in os.listdir(folder):
+                os.remove(os.path.join(folder, f))
+            os.rmdir(folder)
         storage[room_id] = {}
         return jsonify({"status":"cleared","room":room_id})
     return jsonify({"status":"no room"})
-    
 
-# Post message to a room
 @app.route('/u/<user>/<room_id>/post/<data>')
 def post_data(user, room_id, data):
     if room_id not in storage:
@@ -37,28 +42,19 @@ def post_data(user, room_id, data):
     }
     return jsonify({"user":user,"status": "posted", "room": room_id, "id": uid})
 
-# Get messages in a room
 @app.route('/u/<user>/<room_id>/get')
 def get_data(user,room_id):
     room_data = storage.get(room_id, {})
     out = {}
-
     for k,v in room_data.items():
         d = v.copy()
-
-        # if file entry replace bytes with only filename
-        if "content" in d:
-            d.pop("content")
-            # already has filename key so keep it
-
+        if "path" in d:
+            d.pop("path", None)
         out[k] = d
-
     return jsonify(out)
-    
-    
-# Upload file to a room
+
 @app.route('/u/<user>/<room_id>/upload/', methods=['GET', 'POST'])
-def upload_file(room_id, user):
+def upload_file(user, room_id):
     if request.method == 'GET':
         return render_template_string('''
         <form method="post" enctype="multipart/form-data">
@@ -74,26 +70,24 @@ def upload_file(room_id, user):
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
-    # limit check 250MB
-    file.seek(0, os.SEEK_END)
-    size = file.tell()
-    file.seek(0)
-    if size > 250 * 1024 * 1024:
-        return jsonify({"error": "File too large"}), 400
-
     if room_id not in storage:
         storage[room_id] = {}
 
+    room_folder = os.path.join(BASE_DIR, room_id)
+    os.makedirs(room_folder, exist_ok=True)
+
     uid = unique_id()[:8]
+    save_path = os.path.join(room_folder, uid + "_" + file.filename)
+    file.save(save_path)
+
     storage[room_id][uid] = {
         "user": user,
         "filename": file.filename,
-        "content": file.read(),
+        "path": save_path,
         "time": time.strftime('%Y-%m-%d %H:%M:%S')
     }
     return jsonify({"status": "file uploaded", "room": room_id, "id": uid})
-    
-# Download file
+
 @app.route('/u/<room_id>/download/<uid>')
 def download_file(room_id, uid):
     room = storage.get(room_id, {})
@@ -101,10 +95,9 @@ def download_file(room_id, uid):
     if not entry:
         return jsonify({"error": "File not found"}), 404
 
-    return send_file(
-        io.BytesIO(entry['content']),
+    return send_file(entry['path'],
         as_attachment=True,
-        download_name=entry.get('filename', 'file'),
+        download_name=entry['filename'],
         mimetype='application/octet-stream'
     )
 
